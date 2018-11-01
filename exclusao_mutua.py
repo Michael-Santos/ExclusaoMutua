@@ -65,16 +65,19 @@ def enviarConsumir(idPross, portaPross, clockInicial, listaRecursosEmUso, listaR
 		time.sleep(1)
 		
 		# Verifica se alguma solicitação recebeu todos os ACKS
-		for recurso in listaRecursosSolicitados:
-			if recurso["numACKS"] == NUMPROCESS-1:
+		for i in range(len(listaRecursosSolicitados)):
+			if listaRecursosSolicitados[i]["numACKS"] == NUMPROCESS-1:
 				
 				# Verifica se recurso não está em uso
 				existe = False
-				for x in listaRecursosEmUso:
-					if x["recuso"] == recurso["nomeRecurso"]:
+				for j in range(len(listaRecursosEmUso)):
+					if listaRecursosEmUso[j]["recurso"] == listaRecursosSolicitados[i]["nomeRecurso"]:
 						existe = True
 				
-				listaRecursosEmUso.append({"tempo": recurso["tempo"], "nomeRecurso": recurso["recurso"]})
+
+				listaRecursosEmUso.append({"tempo": listaRecursosSolicitados[i]["tempo"], "nomeRecurso": listaRecursosSolicitados[i]["nomeRecurso"]})
+			del listaRecursosSolicitados[i]
+			break
 
 #############################################################################
 # Processamento da mensagem
@@ -118,7 +121,7 @@ def gerenciarRecurso(mensagemJson, clockInicial, listaRecursosEmUso, listaRecurs
 		# Caso estiver, envia NACK e acrescenta o id do processo que solicitou o recurso na lista de próximos
 		for i in range(len(listaRecursosEmUso)):
 			if listaRecursosEmUso[i]["nomeRecurso"] == mensagem["nomeRecurso"]:
-				listaProcessosProximos[mensagem["nomeRecurso"]].append(mensagem["marcaTempo"])
+				listaProcessosProximos[mensagem["nomeRecurso"]].append(mensagem["marcaTempo"][3:])
 				listaProcessosProximos.sort(key=lambda x:x["marcaTempo"])
 				
 				mensagemJson = {"tipoMensagem": "NACK", "marcaTempo": str(clockInicial[0]).zfill(3) + str(idPross).zfill(3), 
@@ -185,6 +188,10 @@ t1.start()
 # Cria thread que é responsável por consumir os recursos
 t2 = threading.Thread(target=consumir, args=(idPross, portaPross, clockInicial, listaRecursosEmUso, listaRecursosSolicitados, listaRecursosACK, listaProcessosProximos))
 t2.start()
+
+# Envia solicitações para consumo
+t3= threading.Thread(target=enviarConsumir, args=(idPross, portaPross, clockInicial, listaRecursosEmUso, listaRecursosSolicitados, listaRecursosACK, listaProcessosProximos))
+t3.start()
 
 # Thread principal é responsável por solicitar recursos aos outros processos
 while(True):
