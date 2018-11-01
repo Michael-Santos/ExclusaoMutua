@@ -51,10 +51,10 @@ def consumir(idPross, portaPross, clockInicial, listaRecursosEmUso, listaRecurso
 		print("\nRecursos solicitados")
 		imprimirRecursosSolicitados(listaRecursosSolicitados)
 
-		time.sleep(10)
-		for i in range(len(listaRecursosACK)):
-			listaRecursosACK[i]["tempo"] = listaRecursosACK[i]["tempo"] - 1
-			if listaRecursosACK[i]["tempo"] == 0:
+		time.sleep(5)
+		for i in range(len(listaRecursosEmUso)):
+			listaRecursosEmUso[i]["tempo"] = listaRecursosEmUso[i]["tempo"] - 1
+			if listaRecursosEmUso[i]["tempo"] == 0:
 				del listaRecursosEmUso[i]
 				# Enviar ACK para os outros processos dizendo que o recurso foi liberado
 
