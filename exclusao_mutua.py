@@ -160,8 +160,9 @@ while(True):
 	if podeSocilitar == False:
 		print("Recurso já está em uso ou já foi solicitado!")
 	else:
-		listaRecursosSolicitados.append( {"nomeRecurso": recurso, "marcaTempo": str(clockInicial[0]+1).zfill(3) + str(idPross).zfill(3), "tempo": tempo} )
+		clockInicial[0] = clockInicial[0]+1
+		listaRecursosSolicitados.append( {"nomeRecurso": recurso, "marcaTempo": str(clockInicial[0]).zfill(3) + str(idPross).zfill(3), "tempo": tempo} )
 		listaRecursosSolicitados.sort(key=lambda x:x["marcaTempo"])
-		mensagemJson = {"tipoMensagem": "requisicao" , "marcaTempo": str(clockInicial[0]+1).zfill(3) + str(idPross).zfill(3), "recurso": recurso, "tempo": tempo}
+		mensagemJson = {"tipoMensagem": "requisicao" , "marcaTempo": str(clockInicial[0]).zfill(3) + str(idPross).zfill(3), "recurso": recurso, "tempo": tempo}
 		mensagem = json.dumps(mensagemJson)
 		enviarBroadcast(mensagem, portaPross)
