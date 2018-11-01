@@ -33,8 +33,8 @@ def imprimirRecursosSolicitados(listaRecursosSolicitados):
 		print("# Não há recursos solicitados")
 	
 	for registro in listaRecursosSolicitados:
-		print("# Recurso: {} | Marca de Tempo: {} | Tempo: {}".format(registro["nomeRecurso"], 
-			registro["marcaTempo"], registro["tempo"]))
+		print("# Recurso: {} | Marca de Tempo: {} | Num ACKS: {} | Tempo: {}".format(registro["nomeRecurso"], 
+			registro["marcaTempo"], registro["numACKS"], registro["tempo"]))
 	
 	print("#################################################################")
 
@@ -42,7 +42,7 @@ def imprimirRecursosSolicitados(listaRecursosSolicitados):
 # Consumo de recursos
 #############################################################################
 
-# Consome os recursos em uso (a cada 5 segundos decrementa o contador de tempo do recurso)
+# Consome os recursos em uso (a cada 10 segundos decrementa o contador de tempo do recurso)
 def consumir(idPross, portaPross, clockInicial, listaRecursosEmUso, listaRecursosSolicitados, listaRecursosACK, listaProcessosProximos):
 	
 	while(True):
@@ -50,14 +50,31 @@ def consumir(idPross, portaPross, clockInicial, listaRecursosEmUso, listaRecurso
 		imprimirRecursosEmUso(listaRecursosEmUso)
 		print("\nRecursos solicitados")
 		imprimirRecursosSolicitados(listaRecursosSolicitados)
+
 		time.sleep(10)
 		for i in range(len(listaRecursosACK)):
 			listaRecursosACK[i]["tempo"] = listaRecursosACK[i]["tempo"] - 1
 			if listaRecursosACK[i]["tempo"] == 0:
 				del listaRecursosEmUso[i]
-			# Enviar ACK para os outros processos dizendo que o recurso foi liberado
+				# Enviar ACK para os outros processos dizendo que o recurso foi liberado
 
+# Envia o recurso para ser consumido
+def enviarConsumir(idPross, portaPross, clockInicial, listaRecursosEmUso, listaRecursosSolicitados, listaRecursosACK, listaProcessosProximos):
 
+	while(True):
+		time.sleep(1)
+		
+		# Verifica se alguma solicitação recebeu todos os ACKS
+		for recurso in listaRecursosSolicitados:
+			if recurso["numACKS"] == NUMPROCESS-1:
+				
+				# Verifica se recurso não está em uso
+				existe = False
+				for x in listaRecursosEmUso:
+					if x["recuso"] == recurso["nomeRecurso"]:
+						existe = True
+				
+				listaRecursosEmUso.append({"tempo": recurso["tempo"], "nomeRecurso": recurso["recurso"]})
 
 #############################################################################
 # Processamento da mensagem
@@ -70,7 +87,6 @@ def updateClock(mensagem, clockInicial):
     else:
     	clockInicial[0] = clockInicial[0] + 1
 
-
 # Identificar o que a mensagem fará
 def gerenciarRecurso(mensagemJson, clockInicial, listaRecursosEmUso, listaRecursosSolicitados, listaRecursosACK, listaProcessosProximos, portaPross):
 	mensagem = json.loads(mensagemJson.decode('utf-8'))
@@ -79,10 +95,42 @@ def gerenciarRecurso(mensagemJson, clockInicial, listaRecursosEmUso, listaRecurs
 	# Atualiza o relógio lógico
 	updateClock(mensagem, clockInicial)
 
-	if mensagem["tipoMensagem"] == "requisicao":
-		print(mensagem)
-		# colocarRecuso em uso
-		#enviarMensagem de ACK
+	# Ao receber um ACK é acrescetada a quantidade de elementos da file de ACKS daquele recurso
+	if mensagem["tipoMensagem"] == "ACK":
+		for registro in listaRecursosSolicitados:
+			if registro["nomeRecurso"] == mensagem["nomeRecurso"]:
+				registro["numACKS"] = registro["numACKS"] + 1
+				break 
+
+	# Ao receber um NACK somente é notificado que foi recebido um NACK
+	elif mensagem["tipoMensagem"] == "NACK":
+		print("Recebido NACK, recurso não está disponível ainda!")
+
+	# Ao receber um requisição é verificado se o recuso está em uso ou na fila de solicitações
+	# Caso esteja em uso é envidao um NACK e é acrescentado um registro na lista de solicitações
+	# Caso esteja na fila de solicitações é 
+	elif mensagem["tipoMensagem"] == "requisicao":
+		
+		# Atualiza o clock lógico para a mensagem que será enviada
+		clockInicial[0] = clockInicial[0] + 1
+		
+		# Verificar se está na lista de recursos em uso. 
+		# Caso estiver, envia NACK e acrescenta o id do processo que solicitou o recurso na lista de próximos
+		for i in range(len(listaRecursosEmUso)):
+			if listaRecursosEmUso[i]["nomeRecurso"] == mensagem["nomeRecurso"]:
+				listaProcessosProximos[mensagem["nomeRecurso"]].append(mensagem["marcaTempo"])
+				listaProcessosProximos.sort(key=lambda x:x["marcaTempo"])
+				
+				mensagemJson = {"tipoMensagem": "NACK", "marcaTempo": str(clockInicial[0]).zfill(3) + str(idPross).zfill(3), 
+					"marcaTempoSolicitacao": mensagem["marcaTempo"], "nomeRecurso": mensagem["nomeRecurso"]}
+				enviarUnicast(json.dumps(mensagemJson), mensagem["portaPross"])
+
+		# Verificar se está na lista de recursos solicitados
+
+
+		# enviarMensagem de ACK
+		mensagemJson = {"tipoMensagem": "ACK", "marcaTempo": str(clockInicial[0]).zfill(3) + str(idPross).zfill(3), "marcaTempoSolicitacao": mensagem["marcaTempo"], "nomeRecurso": mensagem["recurso"]}
+		enviarUnicast(json.dumps(mensagemJson), mensagem["portaPross"])
 
 #############################################################################
 # Configuração de envio/recebimento mensagens com socket
@@ -96,7 +144,7 @@ def receiver(idPross, portaPross, clockInicial, listaRecursosEmUso, listaRecurso
 
 	while(True):
 		data, address = sock.recvfrom(4096)
-		gerenciarRecurso(data, clockInicial, listaRecursosEmUso, listaRecursosEmUso, listaRecursosSolicitados, listaProcessosProximos, portaPross)
+		gerenciarRecurso(data, clockInicial, listaRecursosEmUso, listaRecursosSolicitados, listaRecursosACK, listaProcessosProximos, portaPross)
 
 # Envia mensagens em Unicast
 def sender(mensagem, portaPross):
@@ -152,17 +200,29 @@ while(True):
 	for i in range(len(listaRecursosEmUso)):
 		if listaRecursosEmUso[i]["nomeRecurso"] == recurso:
 			podeSocilitar = False
+			break
 
 	for i in range(len(listaRecursosSolicitados)):
 		if listaRecursosSolicitados[i]["nomeRecurso"] == recurso:
 			podeSocilitar = False
-	
+			break
+
 	if podeSocilitar == False:
 		print("Recurso já está em uso ou já foi solicitado!")
 	else:
 		clockInicial[0] = clockInicial[0]+1
-		listaRecursosSolicitados.append( {"nomeRecurso": recurso, "marcaTempo": str(clockInicial[0]).zfill(3) + str(idPross).zfill(3), "tempo": tempo} )
+		listaRecursosSolicitados.append( {"nomeRecurso": recurso, "marcaTempo": str(clockInicial[0]).zfill(3) + str(idPross).zfill(3), "tempo": tempo, "numACKS": 0} )
 		listaRecursosSolicitados.sort(key=lambda x:x["marcaTempo"])
-		mensagemJson = {"tipoMensagem": "requisicao" , "marcaTempo": str(clockInicial[0]).zfill(3) + str(idPross).zfill(3), "recurso": recurso, "tempo": tempo}
+		mensagemJson = {"tipoMensagem": "requisicao" , "marcaTempo": str(clockInicial[0]).zfill(3) + str(idPross).zfill(3), "recurso": recurso, "tempo": tempo, "portaPross": portaPross}
 		mensagem = json.dumps(mensagemJson)
 		enviarBroadcast(mensagem, portaPross)
+
+
+# Formato mensagem ACK: mensagemJson = {"tipoMensagem": "ACK", "marcaTempo": str(clockInicial[0]).zfill(3) + str(idPross).zfill(3), 
+#					"marcaTempoSolicitacao": mensagem["marcaTempo"], "nomeRecurso": mensagem["nomeRecurso"]}
+#
+# Formato mensagem NACK: mensagemJson = {"tipoMensagem": "NACK", "marcaTempo": str(clockInicial[0]).zfill(3) + str(idPross).zfill(3), 
+#					"marcaTempoSolicitacao": mensagem["marcaTempo"], "nomeRecurso": mensagem["nomeRecurso"]}
+#
+# Formato mensagem Requisicao: {"tipoMensagem": "requisicao" , "marcaTempo": str(clockInicial[0]).zfill(3) + str(idPross).zfill(3), 
+# 					"recurso": recurso, "tempo": tempo, "portaPross": portaPross}
